@@ -15,26 +15,74 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const server = http.createServer(app);
 
+/* =========================
+   ✅ CORS CONFIG (FIXED)
+========================= */
+
+const allowedOrigins = [
+  process.env.CLIENT_URL, // your production domain
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (Postman, mobile apps)
+    if (!origin) return callback(null, true);
+
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes("vercel.app") // ✅ allow ALL Vercel preview deployments
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
+
+/* =========================
+   ✅ SOCKET.IO (FIXED)
+========================= */
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      if (
+        origin.includes("vercel.app") ||
+        origin === process.env.CLIENT_URL
+      ) {
+        callback(null, true);
+      } else {
+        callback("Not allowed by CORS");
+      }
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
 // Make io available to routes
 app.set('io', io);
 
-// Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
+/* =========================
+   ✅ MIDDLEWARE
+========================= */
+
+app.use(cors(corsOptions));
+
+// ✅ Handle preflight requests properly
+app.options("*", cors(corsOptions));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
 
-// Routes
+/* =========================
+   ✅ ROUTES
+========================= */
+
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/expenses', expenseRoutes);
@@ -45,10 +93,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Expense Splitter API running' });
 });
 
-// Error handler
+/* =========================
+   ✅ ERROR HANDLER
+========================= */
+
 app.use(errorHandler);
 
-// Socket.io connection
+/* =========================
+   ✅ SOCKET CONNECTION
+========================= */
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
@@ -66,7 +120,10 @@ io.on('connection', (socket) => {
   });
 });
 
-// Connect to MongoDB and start server
+/* =========================
+   ✅ DATABASE + SERVER
+========================= */
+
 const PORT = process.env.PORT || 5000;
 
 mongoose
